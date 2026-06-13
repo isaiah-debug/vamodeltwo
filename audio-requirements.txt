@@ -1,0 +1,61 @@
+"""Turn-taking features from a WhisperX transcript.
+
+Input: WhisperX JSON ({"segments": [{"start", "end", "speaker", "text"}, ...]}).
+Output: per-speaker dict of the core leadership-emergence measures.
+
+The measures and their literature anchors are documented in
+docs/behavior_pipeline_guide.pdf, section 8.
+"""
+
+from collections import defaultdict
+
+
+def compute_speaker_features(transcript: dict, overlap_ms: int = 200) -> dict:
+    """Per-speaker speaking time, turns, and interruptions.
+
+    An interruption is counted when speaker B's segment starts at least
+    `overlap_ms` before speaker A's segment ends (i.e., genuine overlap,
+    not a quick handoff).
+    """
+    segments = [s for s in transcript.get("segments", []) if s.get("speaker")]
+    segments.sort(key=lambda s: s["start"])
+
+    feats: dict = defaultdict(lambda: {
+        "speaking_time_s": 0.0,
+        "turn_count": 0,
+        "mean_turn_length_s": 0.0,
+        "interruptions_made": 0,
+        "interruptions_received": 0,
+    })
+
+    total_time = 0.0
+    prev_speaker = None
+    for seg in segments:
+        spk = seg["speaker"]
+        dur = float(seg["end"]) - float(seg["start"])
+        feats[spk]["speaking_time_s"] += dur
+        total_time += dur
+        if spk != prev_speaker:
+            feats[spk]["turn_count"] += 1
+            prev_speaker = spk
+
+    # Interruptions: B starts while A is still talking
+    overlap_s = overlap_ms / 1000.0
+    for i, seg in enumerate(segments):
+        for nxt in segments[i + 1:]:
+            if nxt["start"] >= seg["end"]:
+                break
+            if nxt["speaker"] != seg["speaker"] and \
+                    (seg["end"] - nxt["start"]) >= overlap_s:
+                feats[nxt["speaker"]]["interruptions_made"] += 1
+                feats[seg["speaker"]]["interruptions_received"] += 1
+
+    for spk, v in feats.items():
+        if v["turn_count"]:
+            v["mean_turn_length_s"] = round(
+                v["speaking_time_s"] / v["turn_count"], 2)
+        v["speaking_time_s"] = round(v["speaking_time_s"], 2)
+        v["speaking_share"] = round(
+            v["speaking_time_s"] / total_time, 3) if total_time else 0.0
+
+    return dict(feats)

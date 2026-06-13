@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# ============================================================
+# Local behavior-analysis pipeline setup — Ubuntu 22.04/24.04
+# Target: RTX 5060 (Blackwell, sm_120) + 32GB RAM
+#
+# Design decisions (read before running):
+#   1. THREE isolated venvs, not one. whisperx, pyannote, and
+#      py-feat have mutually hostile dependency pins. One env
+#      "works" for a week then breaks on the first upgrade.
+#      Isolation is the difference between a tool and a toy.
+#   2. PyTorch nightly/2.7+ with cu128 — REQUIRED for sm_120.
+#      Stable cu121/cu124 wheels will silently fall back to CPU.
+#   3. Heavy models pull on first use, not here. This script
+#      installs code, not weights (except optional Ollama pull).
+#
+# Usage:
+#   chmod +x setup_behavior_pipeline.sh
+#   ./setup_behavior_pipeline.sh            # full install
+#   ./setup_behavior_pipeline.sh --no-vision  # skip vision env
+# ============================================================
+
+set -euo pipefail
+
+PIPELINE_ROOT="${HOME}/behavior-pipeline"
+PYTORCH_INDEX="https://download.pytorch.org/whl/cu128"
+SKIP_VISION=false
+[[ "${1:-}" == "--no-vision" ]] && SKIP_VISION=true
+
+log()  { printf "\n\033[1;32m==> %s\033[0m\n" "$*"; }
+warn() { printf "\n\033[1;33m[!] %s\033[0m\n" "$*"; }
+
+# ------------------------------------------------------------
+# 0. Pre-flight checks
+# ------------------------------------------------------------
+log "Pre-flight checks"
+
+if ! command -v nvidia-smi &>/dev/null; then
+  warn "nvidia-smi not found. Install the NVIDIA driver first:"
+  warn "  sudo ubuntu-drivers install --gpgpu   (or driver >= 570 for Blackwell)"
+  warn "Continuing anyway — installs will work, GPU inference will not."
+else
+  DRIVER_VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
+  if (( DRIVER_VER < 570 )); then
+    warn "Driver ${DRIVER_VER} detected. Blackwell (RTX 5060) needs >= 570. Upgrade before GPU use."
+  else
+    log "Driver ${DRIVER_VER} OK for Blackwell."
+  fi
+fi
+
+# ------------------------------------------------------------
+# 1. System packages
+# ------------------------------------------------------------
+log "Installing system packages (sudo required)"
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential git curl wget \
+  python3 python3-venv python3-dev python3-pip \
+  ffmpeg sox libsox-dev \
+  libsndfile1 libsndfile1-dev \
+  portaudio19-dev \
+  cmake pkg-config \
+  libopenblas-dev \
+  libgl1 libglib2.0-0 \
+  sqlite3
+
+mkdir -p "${PIPELINE_ROOT}"/{audio-env,vision-env,nlp-env,data,models,scripts}
+cd "${PIPELINE_ROOT}"
+
+# Helper: create a venv with cu128 torch preinstalled
+make_torch_env () {
+  local env_path="$1"
+  python3 -m venv "${env_path}"
+  # shellcheck disable=SC1091
+  source "${env_path}/bin/activate"
+  pip install --upgrade pip wheel setuptools
+  log "Installing PyTorch (cu128) into ${env_path} — this is the big download"
+  pip install torch torchaudio torchvision --index-url "${PYTORCH_INDEX}"
+}
+
+# ------------------------------------------------------------
+# 2. AUDIO ENV — transcription, diarization, prosody
+# ------------------------------------------------------------
+log "Building audio environment (whisperx, pyannote, prosody)"
+make_torch_env "${PIPELINE_ROOT}/audio-env"
+
+pip install \
+  faster-whisper \
+  whisperx \
+  "pyannote.audio>=3.1" \
+  speechbrain \
+  silero-vad \
+  opensmile \
+  praat-parselmouth \
+  librosa soundfile \
+  pydub
+
+deactivate
+log "Audio env done."
+
+# ------------------------------------------------------------
+# 3. VISION ENV — pose, face, tracking
+# ------------------------------------------------------------
+if [[ "${SKIP_VISION}" == false ]]; then
+  log "Building vision environment (YOLO, pose, facial AUs)"
+  make_torch_env "${PIPELINE_ROOT}/vision-env"
+
+  pip install \
+    ultralytics \
+    py-feat \
+    mediapipe \
+    opencv-python \
+    supervision \
+    lapx   # ByteTrack association
+
+  deactivate
+  log "Vision env done."
+else
+  warn "Skipping vision env (--no-vision)."
+fi
+
+# ------------------------------------------------------------
+# 4. NLP/ANALYSIS ENV — conversation dynamics, networks, storage
+# ------------------------------------------------------------
+log "Building NLP/analysis environment (ConvoKit, NetworkX, DuckDB)"
+python3 -m venv "${PIPELINE_ROOT}/nlp-env"
+# shellcheck disable=SC1091
+source "${PIPELINE_ROOT}/nlp-env/bin/activate"
+pip install --upgrade pip wheel setuptools
+
+pip install \
+  convokit \
+  spacy \
+  empath vaderSentiment \
+  networkx python-igraph \
+  duckdb \
+  pandas pyarrow polars \
+  matplotlib seaborn \
+  scikit-learn \
+  dvc \
+  jupyterlab
+
+python -m spacy download en_core_web_sm
+deactivate
+log "NLP env done."
+
+# ------------------------------------------------------------
+# 5. Ollama — local LLM for qualitative coding at scale
+# ------------------------------------------------------------
+if ! command -v ollama &>/dev/null; then
+  log "Installing Ollama"
+  curl -fsSL https://ollama.com/install.sh | sh
+else
+  log "Ollama already installed."
+fi
+warn "Pull a model later (NOT during pipeline runs — it competes for VRAM):"
+warn "  ollama pull qwen2.5:14b-instruct-q4_K_M   # best quality, partial CPU offload"
+warn "  ollama pull llama3.1:8b-instruct-q4_K_M   # fully on-GPU, faster"
+
+# ------------------------------------------------------------
+# 6. Convenience activation scripts + env check
+# ------------------------------------------------------------
+log "Writing helper scripts"
+
+cat > "${PIPELINE_ROOT}/scripts/activate-audio.sh"  <<EOF
+source ${PIPELINE_ROOT}/audio-env/bin/activate
+EOF
+cat > "${PIPELINE_ROOT}/scripts/activate-vision.sh" <<EOF
+source ${PIPELINE_ROOT}/vision-env/bin/activate
+EOF
+cat > "${PIPELINE_ROOT}/scripts/activate-nlp.sh"    <<EOF
+source ${PIPELINE_ROOT}/nlp-env/bin/activate
+EOF
+
+cat > "${PIPELINE_ROOT}/scripts/check_gpu.py" <<'EOF'
+import torch
+print(f"torch {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"Device: {torch.cuda.get_device_name(0)}")
+    cc = torch.cuda.get_device_capability(0)
+    print(f"Compute capability: {cc}")
+    if cc[0] < 12:
+        print("WARNING: expected sm_120 for RTX 5060 — check driver/torch build")
+EOF
+
+# ------------------------------------------------------------
+# 7. Final report
+# ------------------------------------------------------------
+log "Verifying audio env GPU access"
+"${PIPELINE_ROOT}/audio-env/bin/python" "${PIPELINE_ROOT}/scripts/check_gpu.py" || true
+
+cat <<DONE
+
+============================================================
+INSTALL COMPLETE — ${PIPELINE_ROOT}
+
+Manual steps remaining (cannot be scripted):
+  1. pyannote gating: create a free HuggingFace token, accept
+     the model terms at hf.co/pyannote/speaker-diarization-3.1,
+     then:  export HF_TOKEN=hf_xxx  (add to ~/.bashrc)
+  2. Pull an Ollama model (see above).
+  3. OpenFace (gaze/AUs beyond py-feat) must be built from
+     source: github.com/TadasBaltrusaitis/OpenFace — do this
+     only if py-feat's AU output proves insufficient.
+  4. LIWC-22 is commercial — buy the academic license
+     separately if you want the clout/analytic dimensions.
+
+Usage pattern (VRAM discipline — run ONE stage at a time):
+  source ~/behavior-pipeline/scripts/activate-audio.sh
+  whisperx session1.wav --model large-v3 --diarize \\
+      --hf_token \$HF_TOKEN --compute_type int8
+  deactivate
+
+Sanity check any env:
+  ~/behavior-pipeline/<env>/bin/python \\
+      ~/behavior-pipeline/scripts/check_gpu.py
+============================================================
+DONE

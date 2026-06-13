@@ -1,0 +1,62 @@
+Bootstrap: docker
+From: nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+# ============================================================
+# Apptainer container: AUDIO STAGE
+# WhisperX transcription + pyannote diarization + prosody
+#
+# Build (on your laptop/WSL — needs apptainer installed,
+# `sudo apt install apptainer`; cluster nodes can't build):
+#   apptainer build audio-stage.sif audio-stage.def
+#
+# Then copy the single .sif file to Laguna:
+#   rsync -avP audio-stage.sif <netid>@<laguna-login>:~/containers/
+#
+# Run anywhere (laptop or cluster) identically:
+#   apptainer exec --nv audio-stage.sif whisperx input.wav \
+#       --model large-v3 --diarize --hf_token $HF_TOKEN
+#
+# The --nv flag passes the host GPU through. Same container,
+# same versions, laptop and cluster — that is the whole point.
+# ============================================================
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y \
+        python3 python3-pip python3-venv \
+        ffmpeg git libsndfile1 sox \
+        && rm -rf /var/lib/apt/lists/*
+
+    pip3 install --no-cache-dir --upgrade pip
+
+    # PyTorch cu128 — works on Blackwell laptop GPU AND
+    # datacenter GPUs (A100/L40/H100) alike
+    pip3 install --no-cache-dir torch torchaudio \
+        --index-url https://download.pytorch.org/whl/cu128
+
+    pip3 install --no-cache-dir \
+        faster-whisper \
+        whisperx \
+        "pyannote.audio>=3.1" \
+        opensmile \
+        praat-parselmouth \
+        librosa soundfile pydub \
+        pandas pyarrow duckdb
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    # Model caches inside bind-mounted scratch, not container
+    export HF_HOME=${HF_HOME:-$HOME/.cache/huggingface}
+
+%labels
+    Author IB / behavior-pipeline
+    Stage audio
+    Description WhisperX + pyannote + prosody extraction
+
+%help
+    Audio stage of the behavior-analysis pipeline.
+    Usage:
+      apptainer exec --nv audio-stage.sif whisperx <file.wav> \
+          --model large-v3 --compute_type float16 \
+          --diarize --hf_token $HF_TOKEN --output_format json
