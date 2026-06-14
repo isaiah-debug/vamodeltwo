@@ -1,0 +1,36 @@
+# Configuration for the psychological dialogue analysis pipeline.
+# Edit these without touching code.
+
+paths:
+  data_dir:   "data"
+  output_dir: "output"
+
+excel:
+  default_sheet: 0          # 0 = first sheet, or use sheet name string
+
+nlp:
+  use_emotion_model: true   # set false for CPU-only / quick runs
+  emotion_model: "j-hartmann/emotion-english-distilroberta-base"
+  batch_size: 32            # increase to 64 on GPU with ≥8GB VRAM
+  vader_positive_threshold:  0.05
+  vader_negative_threshold: -0.05
+
+graph:
+  # Minimum edge weight to display in the interactive graph
+  min_edge_weight: 1
+  # pyvis layout
+  graph_height: "750px"
+
+dashboard:
+  port: 8501
+  theme: "dark"
+
+hpc:
+  # Laguna cluster connection (fill in before sbatch)
+  host: "laguna.hpc.ucsd.edu"
+  user: ""                  # your UCSD username
+  remote_dir: "~/behavior-pipeline"
+  partition: "gpu"
+  time: "02:00:00"
+  mem: "32G"
+  cpus: 8

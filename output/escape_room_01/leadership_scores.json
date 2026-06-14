@@ -1,0 +1,54 @@
+{
+  "A": {
+    "transformational": 0.0556,
+    "transactional": 0.0123,
+    "laissez_faire": 0.2407,
+    "ipa_task": 0.0617,
+    "ipa_socio_pos": 0.0,
+    "ipa_socio_neg": 0.0,
+    "insight_rate": 0.0556,
+    "talk_share": 0.3214,
+    "turn_count": 162,
+    "composite_emergent": 0.374,
+    "leadership_style": "Transformational / Collaborative"
+  },
+  "B": {
+    "transformational": 0.2453,
+    "transactional": 0.066,
+    "laissez_faire": 0.2264,
+    "ipa_task": 0.066,
+    "ipa_socio_pos": 0.0094,
+    "ipa_socio_neg": 0.0377,
+    "insight_rate": 0.1132,
+    "talk_share": 0.2103,
+    "turn_count": 106,
+    "composite_emergent": 0.773,
+    "leadership_style": "Transformational / Visionary"
+  },
+  "C": {
+    "transformational": 0.0662,
+    "transactional": 0.0735,
+    "laissez_faire": 0.1471,
+    "ipa_task": 0.0956,
+    "ipa_socio_pos": 0.0441,
+    "ipa_socio_neg": 0.0,
+    "insight_rate": 0.0588,
+    "talk_share": 0.2698,
+    "turn_count": 136,
+    "composite_emergent": 0.464,
+    "leadership_style": "Transactional / Task-focused"
+  },
+  "D": {
+    "transformational": 0.07,
+    "transactional": 0.09,
+    "laissez_faire": 0.14,
+    "ipa_task": 0.06,
+    "ipa_socio_pos": 0.03,
+    "ipa_socio_neg": 0.01,
+    "insight_rate": 0.03,
+    "talk_share": 0.1984,
+    "turn_count": 100,
+    "composite_emergent": 0.1614,
+    "leadership_style": "Transactional / Task-focused"
+  }
+}

@@ -1,0 +1,61 @@
+# ============================================================
+# PROJECT CONFIGURATION — copy this file for each new experiment
+# Fill in the values below. Nothing else needs to change.
+# ============================================================
+
+project:
+  session_id:    "session_01"          # unique ID for this run
+  description:   "Escape room study"  # human-readable label
+
+players:
+  # One entry per participant. label = how they appear in outputs.
+  - label: "A"
+    name:  "Jordan"
+  - label: "B"
+    name:  "Elis"
+  - label: "C"
+    name:  "Anna"
+  - label: "D"
+    name:  "Isaiah"
+
+videos:
+  # For HEADCAM footage: set camera_to_player so the pipeline skips face ID
+  # (each file = one known speaker → much faster)
+  headcams:
+    - file:   "cam_A.mp4"
+      player: "A"
+    - file:   "cam_B.mp4"
+      player: "B"
+    - file:   "cam_C.mp4"
+      player: "C"
+    - file:   "cam_D.mp4"
+      player: "D"
+
+  # For SECURITY / OVERHEAD cameras: mixed speakers → full face+audio pipeline
+  security_cameras:
+    - file: "sec_cam_1.mp4"
+    - file: "sec_cam_2.mp4"
+    - file: "sec_cam_3.mp4"
+
+  # Where the video files live (relative to project root)
+  data_dir: "data/videos"
+
+transcription:
+  whisper_model:  "large-v3-turbo"  # options: tiny / base / small / medium / large-v3 / large-v3-turbo
+  language:       "en"
+  min_speakers:   2
+  max_speakers:   4
+  # Set HF_TOKEN env var for speaker diarization — free at huggingface.co
+  # Accept terms at: huggingface.co/pyannote/speaker-diarization-3.1
+
+face_id:
+  enabled:               true    # false = audio-only diarization (faster)
+  sample_every_n_frames: 15      # 1 frame every N for face detection (15 = 0.5 sec @30fps)
+  mouth_open_threshold:  0.04    # increase if false-positives, decrease if misses
+
+analysis:
+  use_emotion_model:     true
+  emotion_batch_size:    32
+
+output:
+  dir: "output"
