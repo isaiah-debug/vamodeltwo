@@ -1,21 +1,15 @@
-"""Transcribe seven multi-track MP4 files into one dialogue CSV.
+"""Transcribe MP4 files into one dialogue CSV.
 
-Expected experiment input:
-  - 7 MP4 files
-  - each MP4 has 4 isolated audio tracks
-  - each audio track corresponds to one participant/speaker
+Supported inputs:
+  - participant-labeled MP4 files, one file per speaker
+  - multi-track MP4 files where audio tracks map to speakers
 
 Example:
     python scripts/transcribe_to_csv.py \
-        --media data/videos/session_part1.mp4 data/videos/session_part2.mp4 \
-        --track-map 0=A 1=B 2=C 3=D \
+        --speaker-media "A (Pink M).mp4=A" "B (Grey M).mp4=B" \
         --player-name A=Jordan B=Elis C=Anna D=Isaiah \
         --session session_01 \
-        --out output/session_01/utterances.csv
-
-Use --file-offset when MP4 files are sequential chunks and timestamps should be
-global across the full session:
-    --file-offset session_part2.mp4=1800 session_part3.mp4=3600
+        --no-visual
 """
 
 from __future__ import annotations
@@ -81,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument("--config", help="Project YAML config")
     inputs.add_argument("--media", nargs="+", help="Seven MP4 files to process")
+    inputs.add_argument("--speaker-media", nargs="+", metavar="FILE=PLAYER")
     inputs.add_argument("--from-json", help="Existing cached turns JSON")
 
     parser.add_argument("--track-map", nargs="+", metavar="TRACK=PLAYER")
@@ -128,7 +123,8 @@ def _load_turns(args) -> tuple[list[dict], list[str], dict[str, list[str]], Path
         return _load_from_config(Path(args.config), args)
     if args.from_json:
         return _load_from_json(Path(args.from_json), args)
-    return _load_from_media([Path(path) for path in args.media], args)
+    media_paths = [Path(path) for path in (args.media or [])]
+    return _load_from_media(media_paths, args)
 
 
 def _load_from_config(path: Path, args) -> tuple[list[dict], list[str], dict[str, list[str]], Path]:
@@ -158,23 +154,45 @@ def _load_from_config(path: Path, args) -> tuple[list[dict], list[str], dict[str
     out_dir = Path(cfg.get("output", {}).get("dir", "output")) / session_id
     out_path = Path(args.out) if args.out else out_dir / "utterances.csv"
 
-    turns = _process_media(
-        media_paths=media_paths,
-        track_map=track_map,
-        file_offsets=offsets,
-        out_dir=out_dir,
-        session_id=session_id,
-        expected_files=int(video_cfg.get("expected_files", args.expected_files)),
-        model=transcription.get("whisper_model", args.model),
-        language=transcription.get("language", args.language),
-        batch_size=int(transcription.get("batch_size", args.batch_size)),
-        compute_type=transcription.get("compute_type", args.compute_type),
-    )
+    if video_cfg.get("speaker_files"):
+        speaker_files = [
+            {
+                "path": data_dir / item["file"],
+                "speaker": item["player"],
+                "audio_track": int(item.get("audio_track", 0)),
+                "offset_s": float(item.get("offset_s", 0.0)),
+            }
+            for item in video_cfg.get("speaker_files", [])
+        ]
+        turns = _process_speaker_files(
+            speaker_files=speaker_files,
+            out_dir=out_dir,
+            session_id=session_id,
+            model=transcription.get("whisper_model", args.model),
+            language=transcription.get("language", args.language),
+            batch_size=int(transcription.get("batch_size", args.batch_size)),
+            compute_type=transcription.get("compute_type", args.compute_type),
+        )
+        visual_media_paths = [item["path"] for item in speaker_files]
+    else:
+        turns = _process_media(
+            media_paths=media_paths,
+            track_map=track_map,
+            file_offsets=offsets,
+            out_dir=out_dir,
+            session_id=session_id,
+            expected_files=int(video_cfg.get("expected_files", args.expected_files)),
+            model=transcription.get("whisper_model", args.model),
+            language=transcription.get("language", args.language),
+            batch_size=int(transcription.get("batch_size", args.batch_size)),
+            compute_type=transcription.get("compute_type", args.compute_type),
+        )
+        visual_media_paths = media_paths
     visual_cfg = cfg.get("visual", {})
     if (bool(visual_cfg.get("enabled", False)) or args.visual) and not args.no_visual:
         turns = _apply_visual(
             turns=turns,
-            media_paths=media_paths,
+            media_paths=visual_media_paths,
             out_dir=out_dir,
             face_references=_face_references_from_config(visual_cfg) or _paths_from_args(args.face_reference),
             sample_fps=float(visual_cfg.get("sample_fps", args.visual_sample_fps)),
@@ -201,27 +219,41 @@ def _load_from_media(
 ) -> tuple[list[dict], list[str], dict[str, list[str]], Path]:
     players = args.players
     aliases = _aliases_from_args(args.player_name)
-    track_map = parse_track_map(args.track_map, players)
     offsets = parse_offsets(args.file_offset)
     out_dir = Path("output") / args.session
     out_path = Path(args.out) if args.out else out_dir / "utterances.csv"
 
-    turns = _process_media(
-        media_paths=media_paths,
-        track_map=track_map,
-        file_offsets=offsets,
-        out_dir=out_dir,
-        session_id=args.session,
-        expected_files=args.expected_files,
-        model=args.model,
-        language=args.language,
-        batch_size=args.batch_size,
-        compute_type=args.compute_type,
-    )
+    if args.speaker_media:
+        speaker_files = _speaker_files_from_args(args.speaker_media, offsets)
+        turns = _process_speaker_files(
+            speaker_files=speaker_files,
+            out_dir=out_dir,
+            session_id=args.session,
+            model=args.model,
+            language=args.language,
+            batch_size=args.batch_size,
+            compute_type=args.compute_type,
+        )
+        visual_media_paths = [item["path"] for item in speaker_files]
+    else:
+        track_map = parse_track_map(args.track_map, players)
+        turns = _process_media(
+            media_paths=media_paths,
+            track_map=track_map,
+            file_offsets=offsets,
+            out_dir=out_dir,
+            session_id=args.session,
+            expected_files=args.expected_files,
+            model=args.model,
+            language=args.language,
+            batch_size=args.batch_size,
+            compute_type=args.compute_type,
+        )
+        visual_media_paths = media_paths
     if args.visual:
         turns = _apply_visual(
             turns=turns,
-            media_paths=media_paths,
+            media_paths=visual_media_paths,
             out_dir=out_dir,
             face_references=_paths_from_args(args.face_reference),
             sample_fps=args.visual_sample_fps,
@@ -267,8 +299,51 @@ def _process_media(
     )
 
 
+def _process_speaker_files(
+    speaker_files: list[dict],
+    out_dir: Path,
+    session_id: str,
+    model: str,
+    language: str,
+    batch_size: int,
+    compute_type: str,
+) -> list[dict]:
+    if not speaker_files:
+        raise ValueError("No speaker files provided")
+    missing = [str(item["path"]) for item in speaker_files if not Path(item["path"]).exists()]
+    if missing:
+        raise FileNotFoundError(f"Speaker media file(s) not found: {', '.join(missing)}")
+
+    from src.video_pipeline import process_speaker_file_session
+
+    return process_speaker_file_session(
+        speaker_files=speaker_files,
+        out_dir=out_dir,
+        session_id=session_id,
+        whisper_model=model,
+        language=language,
+        batch_size=batch_size,
+        compute_type=compute_type,
+    )
+
+
 def _aliases_from_args(items: list[str] | None) -> dict[str, list[str]]:
     return {key: [value] for key, value in parse_assignments(items).items()}
+
+
+def _speaker_files_from_args(items: list[str], offsets: dict[str, float]) -> list[dict]:
+    speaker_files = []
+    for file_name, speaker in parse_assignments(items).items():
+        path = Path(file_name)
+        speaker_files.append(
+            {
+                "path": path,
+                "speaker": speaker,
+                "audio_track": 0,
+                "offset_s": offsets.get(path.name, offsets.get(str(path), 0.0)),
+            }
+        )
+    return speaker_files
 
 
 def _paths_from_args(items: list[str] | None) -> dict[str, Path]:

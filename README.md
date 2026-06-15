@@ -164,6 +164,54 @@ Confirm the audio streams match the config, for example:
 
 If the order is different, update `videos.audio_tracks` in the config.
 
+### Fastest test with the current pilot files
+
+Based on the pilot directory listing, use these four participant files first:
+
+```text
+A (Pink M).mp4
+B (Grey M).mp4
+C (Grey F).mp4
+D (Brown F).mp4
+```
+
+Skip `sc1.mp4`, `sc2.mp4`, and `sc3.mp4` for the first transcription test.
+Those scene-camera files are useful later for visual addressee evidence, but the
+quickest validation against your manual transcript is to transcribe the
+participant-labeled files as A/B/C/D.
+
+Create a config with:
+
+```yaml
+videos:
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
+  speaker_files:
+    - file: "A (Pink M).mp4"
+      player: "A"
+      audio_track: 0
+      offset_s: 0
+    - file: "B (Grey M).mp4"
+      player: "B"
+      audio_track: 0
+      offset_s: 0
+    - file: "C (Grey F).mp4"
+      player: "C"
+      audio_track: 0
+      offset_s: 0
+    - file: "D (Brown F).mp4"
+      player: "D"
+      audio_track: 0
+      offset_s: 0
+```
+
+Then run the first test without visual recognition:
+
+```bash
+python3 scripts/transcribe_to_csv.py \
+  --config configs/session_01.yaml \
+  --no-visual
+```
+
 ### 5. Create and edit the session config
 
 ```bash

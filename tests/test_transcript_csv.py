@@ -178,6 +178,50 @@ def test_media_cli_validates_expected_file_and_track_counts(tmp_path):
         main(["--media", str(media), "--expected-files", "1", "--track-map", "0=A"])
 
 
+def test_speaker_media_cli_maps_files_to_players(tmp_path, monkeypatch):
+    media_a = tmp_path / "A (Pink M).mp4"
+    media_b = tmp_path / "B (Grey M).mp4"
+    media_a.write_bytes(b"a")
+    media_b.write_bytes(b"b")
+    out_path = tmp_path / "utterances.csv"
+
+    def fake_process_speaker_files(speaker_files, **_kwargs):
+        return [
+            {
+                "session": "session_01",
+                "source_file": item["path"].name,
+                "audio_track": item["audio_track"],
+                "speaker": item["speaker"],
+                "start_s": 0,
+                "end_s": 1,
+                "utterance": f"{item['speaker']} test",
+            }
+            for item in speaker_files
+        ]
+
+    monkeypatch.setattr("scripts.transcribe_to_csv._process_speaker_files", fake_process_speaker_files)
+
+    exit_code = main(
+        [
+            "--speaker-media",
+            f"{media_a}=A",
+            f"{media_b}=B",
+            "--players",
+            "A",
+            "B",
+            "--out",
+            str(out_path),
+            "--no-visual",
+        ]
+    )
+
+    assert exit_code == 0
+    with out_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [row["source_file"] for row in rows] == ["A (Pink M).mp4", "B (Grey M).mp4"]
+    assert [row["speaker"] for row in rows] == ["A", "B"]
+
+
 def test_process_multitrack_session_merges_offsets_and_tracks(tmp_path, monkeypatch):
     media1 = tmp_path / "part1.mp4"
     media2 = tmp_path / "part2.mp4"
