@@ -1,0 +1,51 @@
+# Human-subjects data and generated derivatives.
+data/*
+!data/.gitkeep
+!data/README.md
+output/*
+!output/.gitkeep
+*.wav
+*.mp3
+*.mp4
+*.mov
+*.mkv
+*.flac
+*.m4a
+*transcript*.json
+*diarization*
+
+# Secrets and tokens.
+.env
+*.token
+*token*.txt
+hf_*
+
+# Model and large artifacts.
+models/
+*.pt
+*.pth
+*.onnx
+*.gguf
+*.sif
+*.img
+
+# Python.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+audio-env/
+vision-env/
+nlp-env/
+.ipynb_checkpoints/
+
+# Caches and editor noise.
+.cache/
+.huggingface/
+wandb/
+.dvc/cache
+.DS_Store
+Thumbs.db
+*.swp
