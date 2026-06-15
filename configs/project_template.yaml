@@ -53,9 +53,14 @@ face_id:
   sample_every_n_frames: 15      # 1 frame every N for face detection (15 = 0.5 sec @30fps)
   mouth_open_threshold:  0.04    # increase if false-positives, decrease if misses
 
-analysis:
-  use_emotion_model:     true
-  emotion_batch_size:    32
+hpc:
+  # Defaults for scripts/laguna_submit.py. The helper only submits when
+  # --submit is explicitly provided.
+  partition: "gpu"
+  time:      "04:00:00"
+  cpus:      8
+  mem:       "32G"
+  gpus:      1
 
 output:
   dir: "output"

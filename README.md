@@ -95,6 +95,42 @@ The default output is:
 output/<session_id>/utterances.csv
 ```
 
+## Run on Laguna from Jupyter
+
+Use `notebooks/laguna_transcript_workflow.ipynb` when the heavy transcription
+work should run on the Laguna cluster. The notebook is safe by default:
+
+1. It calls `scripts/laguna_submit.py` to write and print a Slurm script.
+2. It does **not** submit anything while `SUBMIT = False`.
+3. It submits only after you set `SUBMIT = True` or run the helper with
+   `--submit`.
+
+Dry-run from a notebook or terminal:
+
+```bash
+python scripts/laguna_submit.py \
+  --session session_01 \
+  --time 04:00:00 \
+  --cpus 8 \
+  --mem 32G \
+  --gpus 1 \
+  -- --config configs/project_template.yaml
+```
+
+Submit only after reviewing the generated script:
+
+```bash
+python scripts/laguna_submit.py --submit \
+  --session session_01 \
+  --time 04:00:00 \
+  --cpus 8 \
+  --mem 32G \
+  --gpus 1 \
+  -- --config configs/project_template.yaml
+```
+
+See `LAGUNA.md` for environment setup, monitoring, and cancellation commands.
+
 ## Run from existing coded CSVs
 
 This is useful for validation and for sessions that have already been coded by

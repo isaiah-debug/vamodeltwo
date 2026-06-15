@@ -1,104 +1,125 @@
-#!/usr/bin/env python3
-"""Process ONE session through ONE pipeline stage.
+# Laguna notebook workflow
 
-This is the architectural unit of the whole repo: notebooks, teammates,
-and the Slurm job array all call this same script. Keep it boring.
+Use Laguna for transcription jobs when you need cluster GPUs, but keep setup and
+review work lightweight. The repository is structured so a Jupyter notebook can
+prepare a Slurm job without consuming compute; the job starts only after an
+explicit submit step.
 
-Usage:
-    python scripts/process_one_session.py --session s01_groupA --stage audio
-    python scripts/process_one_session.py --session s01_groupA --stage features
-"""
+## Principle
 
-import argparse
-import json
-import os
-import subprocess
-import sys
+1. Edit the session config and notebook parameters.
+2. Generate a Slurm script in dry-run mode.
+3. Review the printed command and requested resources.
+4. Submit only when ready.
+5. Monitor with `squeue`; cancel with `scancel` if needed.
+
+## One-time cluster setup
+
+On Laguna, clone or sync the repository and install the optional video stack in
+an environment that includes `ffmpeg`, PyTorch, WhisperX, and pyannote access.
+
+```bash
+cd ~/behavior-pipeline
+python3 -m pip install -r requirements-video.txt
+```
+
+If you use a virtual environment:
+
+```bash
+python3 -m venv ~/behavior-pipeline/transcript-env
+source ~/behavior-pipeline/transcript-env/bin/activate
+python3 -m pip install -r requirements-video.txt
+```
+
+For mixed-speaker diarization, set your HuggingFace token in the job
+environment, not in source code:
+
+```bash
+export HF_TOKEN=hf_yourtoken
+```
+
+## From Jupyter: prepare, then submit
+
+The notebook should call `scripts/laguna_submit.py`. Its default behavior is a
+dry run: it writes and prints the Slurm script but does not call `sbatch`.
+
+```python
 from pathlib import Path
+import subprocess
 
-import yaml
+SESSION = "session_01"
+cmd = [
+    "python3", "scripts/laguna_submit.py",
+    "--session", SESSION,
+    "--time", "04:00:00",
+    "--cpus", "8",
+    "--mem", "32G",
+    "--gpus", "1",
+    "--venv", str(Path.home() / "behavior-pipeline" / "transcript-env"),
+    "--",
+    "--config", "configs/project_template.yaml",
+]
+subprocess.run(cmd, check=True)
+```
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "src"))
+After reviewing the generated Slurm script, submit by adding `--submit` before
+the `--` delimiter:
 
+```python
+submit_cmd = cmd[:2] + ["--submit"] + cmd[2:]
+subprocess.run(submit_cmd, check=True)
+```
 
-def load_config() -> dict:
-    with open(REPO_ROOT / "configs" / "pipeline.yaml") as f:
-        return yaml.safe_load(f)
+## Common resource profiles
 
+| Input type | Suggested flags | Notes |
+| --- | --- | --- |
+| Existing JSON or coded CSV | `--gpus 0 --cpus 2 --mem 8G --time 00:30:00` | No transcription model needed |
+| Headcam media | `--gpus 1 --cpus 8 --mem 32G --time 04:00:00` | Uses WhisperX; skips face ID per mapped camera |
+| Mixed-camera media | `--gpus 1 --cpus 8 --mem 48G --time 06:00:00` | Uses diarization and optional face mapping |
 
-def stage_audio(session: str, cfg: dict) -> None:
-    """Transcribe + diarize via WhisperX. Requires the audio venv."""
-    data_dir = REPO_ROOT / cfg["paths"]["data_dir"]
-    out_dir = REPO_ROOT / cfg["paths"]["output_dir"] / session
-    out_dir.mkdir(parents=True, exist_ok=True)
+These settings request one job, not the whole cluster. Increase only when the
+actual session data requires it.
 
-    wav = data_dir / f"{session}.wav"
-    if not wav.exists():
-        sys.exit(f"Not found: {wav}\nNaming convention: see data/README.md")
+## Monitor jobs
 
-    hf_token = os.environ.get("HF_TOKEN", "")
-    if cfg["audio"]["diarize"] and not hf_token:
-        sys.exit("HF_TOKEN not set. Copy .env.example to .env, fill it, and "
-                 "run:  export $(grep -v '^#' .env | xargs)")
+```bash
+squeue -u "$USER"
+```
 
-    cmd = [
-        "whisperx", str(wav),
-        "--model", cfg["audio"]["whisper_model"],
-        "--compute_type", cfg["audio"]["compute_type"],
-        "--language", cfg["audio"]["language"],
-        "--output_dir", str(out_dir),
-        "--output_format", "json",
-    ]
-    if cfg["audio"]["diarize"]:
-        cmd += ["--diarize", "--hf_token", hf_token,
-                "--min_speakers", str(cfg["audio"]["min_speakers"]),
-                "--max_speakers", str(cfg["audio"]["max_speakers"])]
+View logs after a job starts:
 
-    print(f"[audio] {session}: running WhisperX...")
-    subprocess.run(cmd, check=True)
-    print(f"[audio] done -> {out_dir}")
+```bash
+ls output/slurm
+```
 
+Cancel a job:
 
-def stage_features(session: str, cfg: dict) -> None:
-    """Compute turn-taking features from the transcript JSON."""
-    from pipeline.features.turns import compute_speaker_features
+```bash
+scancel <job_id>
+```
 
-    out_dir = REPO_ROOT / cfg["paths"]["output_dir"] / session
-    transcripts = list(out_dir.glob("*.json"))
-    if not transcripts:
-        sys.exit(f"No transcript JSON in {out_dir} — run --stage audio first.")
+## Static Slurm template
 
-    with open(transcripts[0]) as f:
-        transcript = json.load(f)
+If you do not want to use the notebook helper, edit and submit:
 
-    features = compute_speaker_features(
-        transcript,
-        overlap_ms=cfg["features"]["interruption_overlap_ms"],
-    )
-    out_path = out_dir / "speaker_features.json"
-    with open(out_path, "w") as f:
-        json.dump(features, f, indent=2)
-    print(f"[features] done -> {out_path}")
-    for spk, vals in features.items():
-        print(f"  {spk}: talk={vals['speaking_time_s']:.0f}s "
-              f"turns={vals['turn_count']} "
-              f"interruptions={vals['interruptions_made']}")
+```bash
+sbatch scripts/hpc_submit.slurm
+```
 
+The static template runs `scripts/transcribe_to_csv.py` and accepts environment
+overrides:
 
-STAGES = {"audio": stage_audio, "features": stage_features}
+```bash
+sbatch --export=SESSION=session_01,REPO=$HOME/behavior-pipeline,VENV=$HOME/behavior-pipeline/transcript-env,TRANSCRIBE_ARGS="--config configs/project_template.yaml" scripts/hpc_submit.slurm
+```
 
+## Output
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--session", required=True,
-                    help="Session ID, e.g. s01_groupA (expects data/<id>.wav)")
-    ap.add_argument("--stage", required=True, choices=STAGES)
-    args = ap.parse_args()
+The expected artifact is:
 
-    cfg = load_config()
-    STAGES[args.stage](args.session, cfg)
+```text
+output/<session_id>/utterances.csv
+```
 
-
-if __name__ == "__main__":
-    main()
+If you pass `--out` inside the transcribe arguments, use that path instead.
