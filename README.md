@@ -73,6 +73,50 @@ Also install `ffmpeg` through your OS or cluster environment.
 
 ## Step-by-step: run one session
 
+### Simplest cluster option: one standalone Python file
+
+For the first transcription test, you do not need the whole repo in the media
+folder. Copy this standalone script to the Laguna project directory:
+
+```bash
+cp standalone_transcribe_pilot.py "/project/SZhou_1896/Pilot Test Apr 2026/"
+```
+
+Then run it from that directory:
+
+```bash
+cd "/project/SZhou_1896/Pilot Test Apr 2026"
+python3 standalone_transcribe_pilot.py
+```
+
+It looks for these files in the current folder:
+
+```text
+A (Pink M).mp4
+B (Grey M).mp4
+C (Grey F).mp4
+D (Brown F).mp4
+```
+
+and writes:
+
+```text
+output/pilot_transcription_test/utterances.csv
+```
+
+From Jupyter, use:
+
+```python
+from pathlib import Path
+import subprocess
+
+PROJECT = Path("/project/SZhou_1896/Pilot Test Apr 2026")
+subprocess.run(["python3", "standalone_transcribe_pilot.py"], cwd=PROJECT, check=True)
+```
+
+Use the full repo workflow below when you want Slurm submission, config files,
+or visual/facial addressee evidence.
+
 ### 1. Create ignored data folders
 
 For laptop tests, participant media and face images can live under `data/`,
