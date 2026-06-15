@@ -1,33 +1,4 @@
-# ── Data ingestion ────────────────────────────────────────────────────────────
+# Core dependencies for the transcript CSV workflow.
 pandas>=2.2
-openpyxl>=3.1
-xlrd>=2.0
-
-# ── Graph engine ──────────────────────────────────────────────────────────────
-networkx>=3.3
-pyvis>=0.3.2
-
-# ── NLP / emotion ─────────────────────────────────────────────────────────────
-transformers>=4.45
-sentence-transformers>=3.1
-vaderSentiment>=3.3.2
-spacy>=3.7
-nltk>=3.9
-textblob>=0.18
-
-# ── Scientific computing (GPU-accelerated via torch, installed separately) ────
 numpy>=2.0
-scipy>=1.14
-scikit-learn>=1.5
-
-# ── Visualisation & dashboard ─────────────────────────────────────────────────
-streamlit>=1.38
-plotly>=5.24
-matplotlib>=3.9
-seaborn>=0.13
-kaleido>=0.2.1       # static plotly image export
-
-# ── Utilities ─────────────────────────────────────────────────────────────────
-tqdm>=4.66
-python-dotenv>=1.0
 pyyaml>=6.0
