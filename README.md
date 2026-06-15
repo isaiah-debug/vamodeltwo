@@ -71,6 +71,132 @@ python3 -m pip install -r requirements-video.txt
 
 Also install `ffmpeg` through your OS or cluster environment.
 
+## Step-by-step: run one session
+
+### 1. Create ignored data folders
+
+Participant media and face images should live under `data/`, which is ignored
+by git.
+
+```bash
+mkdir -p data/videos/session_01
+mkdir -p data/faces
+mkdir -p output/session_01
+```
+
+### 2. Put the seven MP4 files in place
+
+Copy from your laptop or external drive:
+
+```bash
+cp "/path/to/session_part1.mp4" data/videos/session_01/
+cp "/path/to/session_part2.mp4" data/videos/session_01/
+cp "/path/to/session_part3.mp4" data/videos/session_01/
+cp "/path/to/session_part4.mp4" data/videos/session_01/
+cp "/path/to/session_part5.mp4" data/videos/session_01/
+cp "/path/to/session_part6.mp4" data/videos/session_01/
+cp "/path/to/session_part7.mp4" data/videos/session_01/
+```
+
+Or symlink from an external drive to avoid duplicating large files:
+
+```bash
+ln -s "/path/to/external/session_part1.mp4" data/videos/session_01/
+```
+
+### 3. Add face reference images
+
+Use one clear image per participant:
+
+```bash
+cp "/path/to/player_A_face.jpg" data/faces/A.jpg
+cp "/path/to/player_B_face.jpg" data/faces/B.jpg
+cp "/path/to/player_C_face.jpg" data/faces/C.jpg
+cp "/path/to/player_D_face.jpg" data/faces/D.jpg
+```
+
+### 4. Verify the audio tracks
+
+Run this on at least one MP4 before transcription:
+
+```bash
+ffprobe -v error -select_streams a \
+  -show_entries stream=index:stream_tags=title \
+  -of table data/videos/session_01/session_part1.mp4
+```
+
+Confirm the audio streams match the config, for example:
+
+```text
+0:a:0 -> A
+0:a:1 -> B
+0:a:2 -> C
+0:a:3 -> D
+```
+
+If the order is different, update `videos.audio_tracks` in the config.
+
+### 5. Create and edit the session config
+
+```bash
+cp configs/project_template.yaml configs/session_01.yaml
+```
+
+Edit `configs/session_01.yaml`:
+
+- Set `project.session_id`.
+- Set each participant's `label` and `name`.
+- Set `videos.data_dir` to `data/videos/session_01`.
+- Set the seven MP4 filenames under `videos.files`.
+- Set `offset_s` for each file if the MP4s are sequential chunks.
+- Set `visual.face_references` to `data/faces/A.jpg`, etc.
+
+### 6. Fast smoke test without visual recognition
+
+This confirms that config loading, MP4 audio-track extraction, and transcription
+work before spending time on face recognition:
+
+```bash
+python3 scripts/transcribe_to_csv.py \
+  --config configs/session_01.yaml \
+  --no-visual
+```
+
+For the very fastest first test, temporarily set:
+
+```yaml
+videos:
+  expected_files: 1
+  files:
+    - file: "session_part1.mp4"
+      offset_s: 0
+```
+
+Restore all seven files after the smoke test.
+
+### 7. Full run with visual/facial addressee evidence
+
+```bash
+python3 scripts/transcribe_to_csv.py --config configs/session_01.yaml
+```
+
+The output is:
+
+```text
+output/session_01/utterances.csv
+```
+
+### 8. Inspect the CSV
+
+Open `output/session_01/utterances.csv` and check:
+
+- `speaker` is A/B/C/D as expected.
+- `utterance` text is readable.
+- `addressee` is populated where possible.
+- `addressee_method` shows whether the addressee came from `face_gaze`,
+  `broadcast_keyword`, `name_mention`, `pronoun_context`, or another fallback.
+- `visual_*` columns provide review evidence for face/gaze assignments.
+
 ## Configure a session
 
 Copy and edit:
@@ -159,6 +285,36 @@ The notebook is safe by default:
 1. It calls `scripts/laguna_submit.py` to write and print a Slurm script.
 2. It does not submit while `SUBMIT = False`.
 3. It submits only after you explicitly set `SUBMIT = True` or pass `--submit`.
+
+Step by step:
+
+1. Copy or sync this repository to Laguna.
+2. Copy/sync `data/videos/session_01/` and `data/faces/` to the same paths on
+   Laguna.
+3. Make sure `configs/session_01.yaml` points to those Laguna paths.
+4. Open `notebooks/laguna_transcript_workflow.ipynb`.
+5. Set:
+
+   ```python
+   SESSION = "session_01"
+   CONFIG = "configs/session_01.yaml"
+   SUBMIT = False
+   ```
+
+6. Run the dry-run cell and review the generated Slurm script.
+7. When the script looks correct, set `SUBMIT = True`.
+8. Run the submit cell.
+9. Monitor:
+
+   ```bash
+   squeue -u "$USER"
+   ```
+
+10. After the job finishes, inspect:
+
+    ```text
+    output/session_01/utterances.csv
+    ```
 
 Dry-run from a terminal:
 
