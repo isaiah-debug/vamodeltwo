@@ -47,10 +47,15 @@ dry run: it writes and prints the Slurm script but does not call `sbatch`.
 from pathlib import Path
 import subprocess
 
+REPO = Path.cwd()
+if not (REPO / "scripts" / "laguna_submit.py").exists():
+    REPO = REPO.parent
+
 SESSION = "session_01"
 cmd = [
     "python3", "scripts/laguna_submit.py",
     "--session", SESSION,
+    "--workdir", str(REPO),
     "--time", "04:00:00",
     "--cpus", "8",
     "--mem", "32G",
