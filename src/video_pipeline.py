@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 
 
 _MODEL_CACHE: dict[tuple[str, str, str, str], tuple[object, object, object, str]] = {}
@@ -192,6 +192,68 @@ def process_multitrack_session(
     with out_file.open("w", encoding="utf-8") as handle:
         json.dump(all_turns, handle, indent=2, ensure_ascii=False)
     print(f"\n[video_pipeline] {len(all_turns)} turns -> {out_file}")
+    return all_turns
+
+
+def process_speaker_file_session(
+    speaker_files: Sequence[Mapping],
+    out_dir: str | Path = "output/session_01",
+    session_id: str = "session_01",
+    whisper_model: str = "large-v3-turbo",
+    language: str = "en",
+    batch_size: int = 16,
+    compute_type: str = "float16",
+    sample_rate: int = 16000,
+) -> list[dict]:
+    """Process one participant-labeled MP4 per speaker into one timeline.
+
+    This is the quickest transcription test when files are named by speaker,
+    e.g. ``A (Pink M).mp4``. Each entry needs ``path`` and ``speaker``; optional
+    fields are ``audio_track`` and ``offset_s``.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    all_turns: list[dict] = []
+
+    for item in speaker_files:
+        media_path = Path(item["path"])
+        speaker = str(item["speaker"])
+        track_index = int(item.get("audio_track", 0))
+        offset = float(item.get("offset_s", 0.0))
+        media_out = out_dir / media_path.stem
+        media_out.mkdir(parents=True, exist_ok=True)
+
+        print(f"\nProcessing {media_path.name} as speaker {speaker}")
+        wav_path = extract_audio_track(
+            media_path=media_path,
+            out_dir=media_out,
+            track_index=track_index,
+            sample_rate=sample_rate,
+        )
+        all_turns.extend(
+            transcribe_isolated_wav(
+                wav_path=wav_path,
+                out_dir=media_out,
+                speaker=speaker,
+                source_file=media_path.name,
+                track_index=track_index,
+                session_id=session_id,
+                offset_s=offset,
+                model_name=whisper_model,
+                language=language,
+                batch_size=batch_size,
+                compute_type=compute_type,
+            )
+        )
+
+    all_turns.sort(key=lambda turn: (float(turn.get("start_s", 0.0)), str(turn.get("speaker", ""))))
+    for index, turn in enumerate(all_turns, start=1):
+        turn["turn"] = index
+
+    out_file = out_dir / "turns.json"
+    with out_file.open("w", encoding="utf-8") as handle:
+        json.dump(all_turns, handle, indent=2, ensure_ascii=False)
+    print(f"\n[video_pipeline] {len(all_turns)} speaker-file turns -> {out_file}")
     return all_turns
 
 

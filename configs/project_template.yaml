@@ -16,8 +16,28 @@ players:
     name: "Isaiah"
 
 videos:
-  data_dir: "data/videos"
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
   expected_files: 7
+
+  # Fast transcription test: one participant-labeled MP4 per speaker.
+  # Each file is expected to have the participant audio on audio track 0.
+  speaker_files:
+    - file: "A (Pink M).mp4"
+      player: "A"
+      audio_track: 0
+      offset_s: 0
+    - file: "B (Grey M).mp4"
+      player: "B"
+      audio_track: 0
+      offset_s: 0
+    - file: "C (Grey F).mp4"
+      player: "C"
+      audio_track: 0
+      offset_s: 0
+    - file: "D (Brown F).mp4"
+      player: "D"
+      audio_track: 0
+      offset_s: 0
 
   # Audio stream indices inside every MP4. Track 0 is ffmpeg's 0:a:0,
   # track 1 is 0:a:1, and so on.
