@@ -12,11 +12,11 @@
 #SBATCH --job-name=transcript-csv
 #SBATCH --output=output/slurm/%x_%j.out
 #SBATCH --error=output/slurm/%x_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 
@@ -24,7 +24,7 @@ set -euo pipefail
 
 REPO="${REPO:-$HOME/behavior-pipeline}"
 SESSION="${SESSION:-session_01}"
-TRANSCRIBE_ARGS="${TRANSCRIBE_ARGS:---config configs/project_template.yaml}"
+TRANSCRIBE_ARGS="${TRANSCRIBE_ARGS:---config configs/session_01.yaml}"
 VENV="${VENV:-}"
 CONDA_ENV="${CONDA_ENV:-}"
 

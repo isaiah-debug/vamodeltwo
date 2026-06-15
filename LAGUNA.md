@@ -1,130 +1,91 @@
-# Laguna notebook workflow
+# Laguna workflow for multi-track MP4 transcription
 
-Use Laguna for transcription jobs when you need cluster GPUs, but keep setup and
-review work lightweight. The repository is structured so a Jupyter notebook can
-prepare a Slurm job without consuming compute; the job starts only after an
-explicit submit step.
+Use Laguna only when you are ready to run transcription. Notebook setup and job
+review do not consume GPUs.
 
-## Principle
+## Expected input
 
-1. Edit the session config and notebook parameters.
-2. Generate a Slurm script in dry-run mode.
-3. Review the printed command and requested resources.
-4. Submit only when ready.
-5. Monitor with `squeue`; cancel with `scancel` if needed.
+- 7 MP4 files
+- 4 isolated audio tracks per MP4
+- one audio track per participant
 
-## One-time cluster setup
-
-On Laguna, clone or sync the repository and install the optional video stack in
-an environment that includes `ffmpeg`, PyTorch, WhisperX, and pyannote access.
+Speaker identity comes from the track map. The cluster job runs:
 
 ```bash
-cd ~/behavior-pipeline
-python3 -m pip install -r requirements-video.txt
+python3 scripts/transcribe_to_csv.py --config configs/session_01.yaml
 ```
 
-If you use a virtual environment:
+## Jupyter workflow
 
-```bash
-python3 -m venv ~/behavior-pipeline/transcript-env
-source ~/behavior-pipeline/transcript-env/bin/activate
-python3 -m pip install -r requirements-video.txt
+Open:
+
+```text
+notebooks/laguna_transcript_workflow.ipynb
 ```
 
-For mixed-speaker diarization, set your HuggingFace token in the job
-environment, not in source code:
-
-```bash
-export HF_TOKEN=hf_yourtoken
-```
-
-## From Jupyter: prepare, then submit
-
-The notebook should call `scripts/laguna_submit.py`. Its default behavior is a
-dry run: it writes and prints the Slurm script but does not call `sbatch`.
+The notebook defaults to:
 
 ```python
-from pathlib import Path
-import subprocess
-
-REPO = Path.cwd()
-if not (REPO / "scripts" / "laguna_submit.py").exists():
-    REPO = REPO.parent
-
-SESSION = "session_01"
-cmd = [
-    "python3", "scripts/laguna_submit.py",
-    "--session", SESSION,
-    "--workdir", str(REPO),
-    "--time", "04:00:00",
-    "--cpus", "8",
-    "--mem", "32G",
-    "--gpus", "1",
-    "--venv", str(Path.home() / "behavior-pipeline" / "transcript-env"),
-    "--",
-    "--config", "configs/project_template.yaml",
-]
-subprocess.run(cmd, check=True)
+SUBMIT = False
 ```
 
-After reviewing the generated Slurm script, submit by adding `--submit` before
-the `--` delimiter:
+First run generates and prints a Slurm script. It does not call `sbatch`.
+
+After reviewing paths, resources, and the config, set:
 
 ```python
-submit_cmd = cmd[:2] + ["--submit"] + cmd[2:]
-subprocess.run(submit_cmd, check=True)
+SUBMIT = True
 ```
 
-## Common resource profiles
+and rerun the submit cell.
 
-| Input type | Suggested flags | Notes |
-| --- | --- | --- |
-| Existing JSON or coded CSV | `--gpus 0 --cpus 2 --mem 8G --time 00:30:00` | No transcription model needed |
-| Headcam media | `--gpus 1 --cpus 8 --mem 32G --time 04:00:00` | Uses WhisperX; skips face ID per mapped camera |
-| Mixed-camera media | `--gpus 1 --cpus 8 --mem 48G --time 06:00:00` | Uses diarization and optional face mapping |
-
-These settings request one job, not the whole cluster. Increase only when the
-actual session data requires it.
-
-## Monitor jobs
+## Terminal dry-run
 
 ```bash
-squeue -u "$USER"
+python3 scripts/laguna_submit.py \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
 ```
 
-View logs after a job starts:
+## Terminal submit
 
 ```bash
-ls output/slurm
-```
-
-Cancel a job:
-
-```bash
-scancel <job_id>
+python3 scripts/laguna_submit.py --submit \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
 ```
 
 ## Static Slurm template
 
-If you do not want to use the notebook helper, edit and submit:
+If you prefer a plain Slurm file:
 
 ```bash
-sbatch scripts/hpc_submit.slurm
+sbatch --export=SESSION=session_01,TRANSCRIBE_ARGS="--config configs/session_01.yaml" scripts/hpc_submit.slurm
 ```
 
-The static template runs `scripts/transcribe_to_csv.py` and accepts environment
-overrides:
+## Monitor and cancel
 
 ```bash
-sbatch --export=SESSION=session_01,REPO=$HOME/behavior-pipeline,VENV=$HOME/behavior-pipeline/transcript-env,TRANSCRIBE_ARGS="--config configs/project_template.yaml" scripts/hpc_submit.slurm
+squeue -u "$USER"
+scancel <job_id>
 ```
 
-## Output
+Logs are written under:
 
-The expected artifact is:
+```text
+output/slurm/
+```
+
+The final CSV is:
 
 ```text
 output/<session_id>/utterances.csv
 ```
-
-If you pass `--out` inside the transcribe arguments, use that path instead.

@@ -1,66 +1,66 @@
-# ============================================================
-# PROJECT CONFIGURATION — copy this file for each new experiment
-# Fill in the values below. Nothing else needs to change.
-# ============================================================
+# Copy this file for each experiment session.
+# The expected input is 7 MP4 files, each with 4 isolated audio tracks.
 
 project:
-  session_id:    "session_01"          # unique ID for this run
-  description:   "Escape room study"  # human-readable label
+  session_id: "session_01"
+  description: "Group dialogue study"
 
 players:
-  # One entry per participant. label = how they appear in outputs.
   - label: "A"
-    name:  "Jordan"
+    name: "Jordan"
   - label: "B"
-    name:  "Elis"
+    name: "Elis"
   - label: "C"
-    name:  "Anna"
+    name: "Anna"
   - label: "D"
-    name:  "Isaiah"
+    name: "Isaiah"
 
 videos:
-  # For HEADCAM footage: set camera_to_player so the pipeline skips face ID
-  # (each file = one known speaker → much faster)
-  headcams:
-    - file:   "cam_A.mp4"
+  data_dir: "data/videos"
+  expected_files: 7
+
+  # Audio stream indices inside every MP4. Track 0 is ffmpeg's 0:a:0,
+  # track 1 is 0:a:1, and so on.
+  audio_tracks:
+    - index: 0
       player: "A"
-    - file:   "cam_B.mp4"
+    - index: 1
       player: "B"
-    - file:   "cam_C.mp4"
+    - index: 2
       player: "C"
-    - file:   "cam_D.mp4"
+    - index: 3
       player: "D"
 
-  # For SECURITY / OVERHEAD cameras: mixed speakers → full face+audio pipeline
-  security_cameras:
-    - file: "sec_cam_1.mp4"
-    - file: "sec_cam_2.mp4"
-    - file: "sec_cam_3.mp4"
-
-  # Where the video files live (relative to project root)
-  data_dir: "data/videos"
+  # offset_s is optional. Use it when files are sequential chunks and the
+  # output CSV should have a global session clock.
+  files:
+    - file: "session_part1.mp4"
+      offset_s: 0
+    - file: "session_part2.mp4"
+      offset_s: 1800
+    - file: "session_part3.mp4"
+      offset_s: 3600
+    - file: "session_part4.mp4"
+      offset_s: 5400
+    - file: "session_part5.mp4"
+      offset_s: 7200
+    - file: "session_part6.mp4"
+      offset_s: 9000
+    - file: "session_part7.mp4"
+      offset_s: 10800
 
 transcription:
-  whisper_model:  "large-v3-turbo"  # options: tiny / base / small / medium / large-v3 / large-v3-turbo
-  language:       "en"
-  min_speakers:   2
-  max_speakers:   4
-  # Set HF_TOKEN env var for speaker diarization — free at huggingface.co
-  # Accept terms at: huggingface.co/pyannote/speaker-diarization-3.1
-
-face_id:
-  enabled:               true    # false = audio-only diarization (faster)
-  sample_every_n_frames: 15      # 1 frame every N for face detection (15 = 0.5 sec @30fps)
-  mouth_open_threshold:  0.04    # increase if false-positives, decrease if misses
+  whisper_model: "large-v3-turbo"
+  language: "en"
+  batch_size: 16
+  compute_type: "float16"
 
 hpc:
-  # Defaults for scripts/laguna_submit.py. The helper only submits when
-  # --submit is explicitly provided.
   partition: "gpu"
-  time:      "04:00:00"
-  cpus:      8
-  mem:       "32G"
-  gpus:      1
+  time: "08:00:00"
+  cpus: 8
+  mem: "48G"
+  gpus: 1
 
 output:
   dir: "output"

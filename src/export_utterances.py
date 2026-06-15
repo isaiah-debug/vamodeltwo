@@ -10,8 +10,12 @@ from pathlib import Path
 UTTERANCE_COLUMNS = (
     "session",
     "turn",
+    "source_file",
+    "audio_track",
     "start_s",
     "end_s",
+    "local_start_s",
+    "local_end_s",
     "timestamp",
     "speaker",
     "addressee",

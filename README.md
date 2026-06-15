@@ -1,193 +1,180 @@
-# Participant Transcript CSV Tool
+# Multi-track MP4 Dialogue Transcriber
 
-This repository is now focused on one task for behavioral experiments:
+This project has one purpose:
 
-> Take video/audio from a session, identify each participant's utterances, infer
-> who each utterance was directed to, and write one auditable CSV.
+> Input **7 MP4 files**, each containing **4 isolated audio tracks** (one track
+> per participant), and output a CSV of speaker dialogue with timestamps,
+> speaker identity, inferred addressee, and transcript text.
 
-The core output is `utterances.csv`.
-
-```csv
-session,turn,start_s,end_s,timestamp,speaker,addressee,utterance,addressee_method
-session_01,1,1,2,00:01,A,All,Which one do you want to do first?,coded
-session_01,2,7,10,00:07,A,B,You want to split up?,coded
-```
-
-`addressee_method` is included because "speaking to whom" is partly inferred
-when no human-coded receiver is available. Reviewers can filter weak heuristics
-instead of treating them as ground truth.
-
-## What the tool does
-
-1. Accepts one of:
-   - video/audio files supported by `ffmpeg`
-   - existing `video_turns.json`
-   - existing per-player coded CSV files
-2. Transcribes media with WhisperX through `src/video_pipeline.py`
-3. Labels speakers by one of these routes:
-   - headcam mapping (`cam_A.mp4=A`) when each recording belongs to one player
-   - diarization/face mapping for mixed-camera footage
-   - existing `speaker` columns for coded CSVs
-4. Infers or preserves addressees with `src/addressee_inference.py`
-5. Writes the narrow CSV with `src/export_utterances.py`
-
-The older leadership, graph, and dashboard modules can still be inspected, but
-they are not needed for this focused workflow.
-
-## Quick start
-
-Install core dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-For video/audio transcription, also install the video stack described in
-`install_video_stack.bat` and make sure `ffmpeg` is on your `PATH`.
-
-Speaker diarization for mixed-speaker audio requires a HuggingFace token with
-access to pyannote models:
-
-```bash
-export HF_TOKEN=hf_yourtoken
-```
-
-## Run from headcam media
-
-Use this when each file contains one known participant.
-
-```bash
-python scripts/transcribe_to_csv.py \
-  --media data/videos/cam_A.mp4 data/videos/cam_B.mp4 data/videos/cam_C.mp4 data/videos/cam_D.mp4 \
-  --camera-map cam_A.mp4=A cam_B.mp4=B cam_C.mp4=C cam_D.mp4=D \
-  --player-name A=Jordan B=Elis C=Anna D=Isaiah \
-  --session session_01 \
-  --out output/session_01/utterances.csv
-```
-
-Headcam mapping skips diarization and face identification for those files.
-
-## Run from mixed-camera media
-
-Use this when a recording can contain multiple speakers.
-
-```bash
-python scripts/transcribe_to_csv.py \
-  --media data/videos/sec_cam_1.mp4 \
-  --players A B C D \
-  --player-name A=Jordan B=Elis C=Anna D=Isaiah \
-  --hf-token "$HF_TOKEN" \
-  --session session_01 \
-  --out output/session_01/utterances.csv
-```
-
-Add `--no-face` to use audio diarization only.
-
-## Run from an existing project config
-
-```bash
-python scripts/transcribe_to_csv.py --config configs/project_template.yaml
-```
-
-The default output is:
+The main artifact is:
 
 ```text
 output/<session_id>/utterances.csv
 ```
 
-## Run on Laguna from Jupyter
-
-Use `notebooks/laguna_transcript_workflow.ipynb` when the heavy transcription
-work should run on the Laguna cluster. The notebook is safe by default:
-
-1. It calls `scripts/laguna_submit.py` to write and print a Slurm script.
-2. It does **not** submit anything while `SUBMIT = False`.
-3. It submits only after you set `SUBMIT = True` or run the helper with
-   `--submit`.
-
-Dry-run from a notebook or terminal:
-
-```bash
-python scripts/laguna_submit.py \
-  --session session_01 \
-  --time 04:00:00 \
-  --cpus 8 \
-  --mem 32G \
-  --gpus 1 \
-  -- --config configs/project_template.yaml
-```
-
-Submit only after reviewing the generated script:
-
-```bash
-python scripts/laguna_submit.py --submit \
-  --session session_01 \
-  --time 04:00:00 \
-  --cpus 8 \
-  --mem 32G \
-  --gpus 1 \
-  -- --config configs/project_template.yaml
-```
-
-See `LAGUNA.md` for environment setup, monitoring, and cancellation commands.
-
-## Run from existing coded CSVs
-
-This is useful for validation and for sessions that have already been coded by
-researchers.
-
-```bash
-python scripts/transcribe_to_csv.py \
-  --from-csv data \
-  --session escape_room_01 \
-  --out output/escape_room_01/utterances.csv
-```
-
-Expected input columns are:
+## Output schema
 
 ```csv
-speaker,receiver,start,end,transcript,notes_challenges
+session,turn,source_file,audio_track,start_s,end_s,local_start_s,local_end_s,timestamp,speaker,addressee,utterance,addressee_method
 ```
 
-Blank speaker cells are forward-filled by `src/multi_csv_loader.py`.
+Important columns:
 
-## Run from existing turn JSON
+- `source_file`: MP4 chunk where the utterance came from.
+- `audio_track`: MP4 audio stream index, e.g. `0` for `0:a:0`.
+- `start_s` / `end_s`: session-level timestamps, including any file offset.
+- `local_start_s` / `local_end_s`: timestamp inside the source MP4.
+- `speaker`: participant mapped from the audio track.
+- `addressee`: who the utterance appears directed to.
+- `addressee_method`: provenance for that addressee label.
+
+## Why no diarization or face recognition?
+
+The input already has one isolated audio track per speaker. Speaker identity is
+therefore a deterministic track mapping:
+
+```text
+0:a:0 -> A
+0:a:1 -> B
+0:a:2 -> C
+0:a:3 -> D
+```
+
+The tool does not run diarization, face detection, graph analysis, leadership
+scoring, dashboards, or visualization. Those were removed because they do not
+help produce the requested CSV.
+
+## Setup
+
+Core utilities:
 
 ```bash
-python scripts/transcribe_to_csv.py \
-  --from-json output/session_01/video_turns.json \
+python3 -m pip install -r requirements.txt
+```
+
+Media transcription:
+
+```bash
+python3 -m pip install -r requirements-video.txt
+```
+
+Also install `ffmpeg` through your OS or cluster environment.
+
+## Configure a session
+
+Copy and edit:
+
+```bash
+cp configs/project_template.yaml configs/session_01.yaml
+```
+
+The key parts are:
+
+```yaml
+videos:
+  data_dir: "data/videos"
+  expected_files: 7
+  audio_tracks:
+    - index: 0
+      player: "A"
+    - index: 1
+      player: "B"
+    - index: 2
+      player: "C"
+    - index: 3
+      player: "D"
+  files:
+    - file: "session_part1.mp4"
+      offset_s: 0
+    - file: "session_part2.mp4"
+      offset_s: 1800
+```
+
+Use `offset_s` when the seven MP4s are sequential chunks and you want one
+global session clock in the CSV.
+
+## Run locally
+
+From config:
+
+```bash
+python3 scripts/transcribe_to_csv.py --config configs/session_01.yaml
+```
+
+Or directly:
+
+```bash
+python3 scripts/transcribe_to_csv.py \
+  --media data/videos/session_part1.mp4 data/videos/session_part2.mp4 data/videos/session_part3.mp4 data/videos/session_part4.mp4 data/videos/session_part5.mp4 data/videos/session_part6.mp4 data/videos/session_part7.mp4 \
+  --track-map 0=A 1=B 2=C 3=D \
+  --player-name A=Jordan B=Elis C=Anna D=Isaiah \
+  --file-offset session_part1.mp4=0 session_part2.mp4=1800 session_part3.mp4=3600 session_part4.mp4=5400 session_part5.mp4=7200 session_part6.mp4=9000 session_part7.mp4=10800 \
+  --session session_01 \
   --out output/session_01/utterances.csv
 ```
 
-This path does not require WhisperX or GPU dependencies.
+## Run on Laguna from Jupyter
 
-## Addressee inference rules
+Use:
 
-Human-coded receivers are preserved first. When `receiver_raw` is empty, the
-tool uses conservative, auditable heuristics:
+```text
+notebooks/laguna_transcript_workflow.ipynb
+```
+
+The notebook is safe by default:
+
+1. It calls `scripts/laguna_submit.py` to write and print a Slurm script.
+2. It does not submit while `SUBMIT = False`.
+3. It submits only after you explicitly set `SUBMIT = True` or pass `--submit`.
+
+Dry-run from a terminal:
+
+```bash
+python3 scripts/laguna_submit.py \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
+```
+
+Submit only after reviewing the generated Slurm script:
+
+```bash
+python3 scripts/laguna_submit.py --submit \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
+```
+
+## Addressee inference
+
+Audio tracks identify who is speaking, not who they are speaking to. The tool
+adds an auditable `addressee_method`:
 
 | Method | Meaning |
 | --- | --- |
-| `coded` | Human-coded `receiver` / `receiver_raw` was present |
-| `broadcast_keyword` | Utterance contains words like "everyone" or "you guys" |
-| `name_mention` | Utterance names a participant from `--player-name` |
-| `pronoun_context` | "you/your" resolved to the nearest distinct speaker |
+| `broadcast_keyword` | Words like "everyone", "you guys", "team" |
+| `name_mention` | Participant name from `--player-name` or config |
+| `pronoun_context` | "you/your" resolved to nearest distinct speaker |
 | `sequential_context` | Fallback to next/previous distinct speaker |
 | `unknown` | No addressee could be inferred |
 
-Use `--no-sequential-addressee` if you prefer unknown over the weakest fallback.
+Use `--no-sequential-addressee` if you want weak fallbacks left blank.
 
-## Test
+## Tests
 
 ```bash
-pytest
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest
+python3 -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
-
-The tests exercise addressee inference, CSV export, timestamp parsing, and coded
-CSV loading without downloading models or running GPU transcription.
 
 ## Data policy
 
-Do not commit participant media, transcripts, tokens, model weights, or derived
-outputs. The repository `.gitignore` excludes `data/`, `output/`, media files,
-transcript JSON, tokens, and model artifacts.
+Do not commit participant media, transcripts, outputs, model weights, or tokens.
+The root `.gitignore` excludes those artifacts.

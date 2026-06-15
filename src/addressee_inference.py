@@ -12,8 +12,6 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Optional
 
-from src.multi_csv_loader import parse_receivers
-
 
 BROADCAST_RE = re.compile(
     r"\b(everyone|everybody|all of you|you all|y'all|you guys|guys|team|folks)\b",
@@ -95,13 +93,31 @@ def normalize_addressee(raw: str, speaker: str, players: Sequence[str]) -> str:
     if not raw:
         return ""
 
-    parsed = parse_receivers(raw, set(players))
+    parsed = _parse_receivers(raw, set(players))
     if "ALL" in parsed:
         return "All"
     if parsed:
         ordered = [player for player in players if player in parsed and player != speaker]
         return _join_players(ordered)
     return raw
+
+
+def _parse_receivers(raw: str, players: set[str]) -> list[str]:
+    low = raw.strip().lower()
+    if low in {"self", "none", "other", "unknown", "room", "the room"}:
+        return []
+    if low == "all":
+        return ["ALL"]
+
+    raw = re.sub(r"\?$", "", raw).strip()
+    parts = re.split(r"\s+and\s+|[/,;]", raw, flags=re.IGNORECASE)
+    normalized_players = {player.upper(): player for player in players}
+    receivers = []
+    for part in parts:
+        key = part.strip().upper()
+        if key in normalized_players:
+            receivers.append(normalized_players[key])
+    return receivers
 
 
 def _player_list(turns: Sequence[Mapping], players: Optional[Iterable[str]]) -> list[str]:
