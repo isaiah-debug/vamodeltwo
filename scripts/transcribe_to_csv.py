@@ -86,6 +86,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--track-map", nargs="+", metavar="TRACK=PLAYER")
     parser.add_argument("--file-offset", nargs="+", metavar="FILE=SECONDS")
     parser.add_argument("--player-name", nargs="+", metavar="PLAYER=NAME")
+    parser.add_argument("--visual", action="store_true", help="Run video/facial addressee inference")
+    parser.add_argument("--no-visual", action="store_true", help="Disable config-driven visual analysis")
+    parser.add_argument("--face-reference", nargs="+", metavar="PLAYER=IMAGE")
+    parser.add_argument("--visual-sample-fps", type=float, default=1.0)
+    parser.add_argument("--identity-threshold", type=float, default=0.35)
+    parser.add_argument("--yaw-threshold", type=float, default=12.0)
     parser.add_argument("--players", nargs="+", default=["A", "B", "C", "D"])
     parser.add_argument("--expected-files", type=int, default=7)
     parser.add_argument("--session", default="session_01")
@@ -164,6 +170,17 @@ def _load_from_config(path: Path, args) -> tuple[list[dict], list[str], dict[str
         batch_size=int(transcription.get("batch_size", args.batch_size)),
         compute_type=transcription.get("compute_type", args.compute_type),
     )
+    visual_cfg = cfg.get("visual", {})
+    if (bool(visual_cfg.get("enabled", False)) or args.visual) and not args.no_visual:
+        turns = _apply_visual(
+            turns=turns,
+            media_paths=media_paths,
+            out_dir=out_dir,
+            face_references=_face_references_from_config(visual_cfg) or _paths_from_args(args.face_reference),
+            sample_fps=float(visual_cfg.get("sample_fps", args.visual_sample_fps)),
+            identity_threshold=float(visual_cfg.get("identity_threshold", args.identity_threshold)),
+            yaw_threshold=float(visual_cfg.get("yaw_threshold", args.yaw_threshold)),
+        )
     return turns, players, aliases, out_path
 
 
@@ -201,6 +218,16 @@ def _load_from_media(
         batch_size=args.batch_size,
         compute_type=args.compute_type,
     )
+    if args.visual:
+        turns = _apply_visual(
+            turns=turns,
+            media_paths=media_paths,
+            out_dir=out_dir,
+            face_references=_paths_from_args(args.face_reference),
+            sample_fps=args.visual_sample_fps,
+            identity_threshold=args.identity_threshold,
+            yaw_threshold=args.yaw_threshold,
+        )
     return turns, players, aliases, out_path
 
 
@@ -242,6 +269,37 @@ def _process_media(
 
 def _aliases_from_args(items: list[str] | None) -> dict[str, list[str]]:
     return {key: [value] for key, value in parse_assignments(items).items()}
+
+
+def _paths_from_args(items: list[str] | None) -> dict[str, Path]:
+    return {key: Path(value) for key, value in parse_assignments(items).items()}
+
+
+def _face_references_from_config(visual_cfg: dict) -> dict[str, Path]:
+    references = visual_cfg.get("face_references", {}) or {}
+    return {str(player): Path(path) for player, path in references.items()}
+
+
+def _apply_visual(
+    turns: list[dict],
+    media_paths: list[Path],
+    out_dir: Path,
+    face_references: dict[str, Path],
+    sample_fps: float,
+    identity_threshold: float,
+    yaw_threshold: float,
+) -> list[dict]:
+    from src.visual_addressee import infer_visual_addressees
+
+    return infer_visual_addressees(
+        turns=turns,
+        media_paths=media_paths,
+        face_references=face_references,
+        out_dir=out_dir,
+        sample_fps=sample_fps,
+        identity_threshold=identity_threshold,
+        yaw_threshold=yaw_threshold,
+    )
 
 
 if __name__ == "__main__":

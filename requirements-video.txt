@@ -1,5 +1,9 @@
 # Optional media transcription stack.
 # Also install ffmpeg through your OS package manager.
 -r requirements.txt
+numpy
+opencv-python
 torch
 whisperx
+insightface
+onnxruntime-gpu

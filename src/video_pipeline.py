@@ -2,8 +2,8 @@
 
 The experiment input is seven long MP4 files. Each MP4 contains four isolated
 audio tracks, one per participant. That means speaker identity comes from the
-audio stream mapping; diarization and face recognition are deliberately out of
-scope for this focused tool.
+audio stream mapping. Optional facial/video analysis runs after transcription
+to improve "who is speaking to whom" labels.
 """
 
 from __future__ import annotations

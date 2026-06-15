@@ -55,6 +55,19 @@ transcription:
   batch_size: 16
   compute_type: "float16"
 
+visual:
+  # Facial recognition and gaze-direction evidence for "speaking to whom".
+  # Requires clear reference images for A/B/C/D.
+  enabled: true
+  sample_fps: 1.0
+  identity_threshold: 0.35
+  yaw_threshold: 12.0
+  face_references:
+    A: "data/faces/A.jpg"
+    B: "data/faces/B.jpg"
+    C: "data/faces/C.jpg"
+    D: "data/faces/D.jpg"
+
 hpc:
   partition: "gpu"
   time: "08:00:00"

@@ -19,6 +19,11 @@ UTTERANCE_COLUMNS = (
     "timestamp",
     "speaker",
     "addressee",
+    "visual_addressee",
+    "visual_confidence",
+    "visual_method",
+    "visual_votes",
+    "visual_evidence",
     "utterance",
     "addressee_method",
 )

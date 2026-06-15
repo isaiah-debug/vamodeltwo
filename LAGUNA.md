@@ -8,6 +8,7 @@ review do not consume GPUs.
 - 7 MP4 files
 - 4 isolated audio tracks per MP4
 - one audio track per participant
+- reference face images for A/B/C/D under the paths in the session config
 
 Speaker identity comes from the track map. The cluster job runs:
 

@@ -35,10 +35,11 @@ def infer_addressees(
 
     Inference order:
       1. Preserve human-coded ``receiver_raw`` / ``addressee`` values.
-      2. Detect broadcast utterances such as "everyone" or "you guys".
-      3. Detect direct name/player mentions using provided aliases.
-      4. Resolve second-person speech ("you", "your") to nearby context.
-      5. Optionally fall back to the next/previous distinct speaker.
+      2. Use visual/facial addressee evidence when present.
+      3. Detect broadcast utterances such as "everyone" or "you guys".
+      4. Detect direct name/player mentions using provided aliases.
+      5. Resolve second-person speech ("you", "your") to nearby context.
+      6. Optionally fall back to the next/previous distinct speaker.
 
     ``addressee_method`` makes weak heuristics visible in downstream review.
     """
@@ -55,6 +56,13 @@ def infer_addressees(
         if coded and not overwrite:
             out["addressee"] = normalize_addressee(coded, speaker, player_list)
             out["addressee_method"] = "coded"
+            inferred.append(out)
+            continue
+
+        visual = str(out.get("visual_addressee", "") or "").strip()
+        if visual and not overwrite:
+            out["addressee"] = normalize_addressee(visual, speaker, player_list)
+            out["addressee_method"] = str(out.get("visual_method", "") or "visual_face_gaze")
             inferred.append(out)
             continue
 

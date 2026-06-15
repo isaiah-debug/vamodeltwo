@@ -7,6 +7,7 @@ import pytest
 from scripts.transcribe_to_csv import main, parse_assignments, parse_offsets, parse_track_map
 from src.addressee_inference import infer_addressees
 from src.export_utterances import UTTERANCE_COLUMNS, export_utterances_csv
+from src.visual_addressee import apply_visual_addressees, select_visual_addressee
 from src.video_pipeline import process_multitrack_session, seconds_to_timestamp
 
 
@@ -34,6 +35,38 @@ def test_infer_addressees_uses_auditable_methods():
     assert enriched[3]["addressee_method"] == "sequential_context"
 
 
+def test_visual_addressee_scores_face_gaze_observations():
+    selection = select_visual_addressee(
+        speaker="A",
+        observations=[
+            {"player": "A", "bbox": [50, 50, 100, 100], "yaw": 25, "confidence": 0.95},
+            {"player": "B", "bbox": [150, 50, 200, 100], "confidence": 0.91},
+            {"player": "C", "bbox": [10, 50, 40, 100], "confidence": 0.88},
+        ],
+    )
+
+    assert selection["visual_addressee"] == "B"
+    assert selection["visual_method"] == "face_gaze"
+    assert selection["visual_confidence"] == 0.91
+
+
+def test_infer_addressees_prefers_visual_evidence():
+    turns = [
+        {
+            "turn": 1,
+            "speaker": "A",
+            "utterance": "Can you try this?",
+            "visual_addressee": "C",
+            "visual_method": "face_gaze",
+        }
+    ]
+
+    enriched = infer_addressees(turns, players=["A", "B", "C"])
+
+    assert enriched[0]["addressee"] == "C"
+    assert enriched[0]["addressee_method"] == "face_gaze"
+
+
 def test_export_utterances_csv_includes_source_and_track_metadata(tmp_path):
     turns = [
         {
@@ -47,6 +80,11 @@ def test_export_utterances_csv_includes_source_and_track_metadata(tmp_path):
             "local_end_s": 3.0,
             "speaker": "C",
             "addressee": "B",
+            "visual_addressee": "B",
+            "visual_confidence": 0.87,
+            "visual_method": "face_gaze",
+            "visual_votes": 3,
+            "visual_evidence": "[]",
             "utterance": "Can you hold this?",
             "addressee_method": "pronoun_context",
         }
@@ -61,6 +99,8 @@ def test_export_utterances_csv_includes_source_and_track_metadata(tmp_path):
     assert reader.fieldnames == list(UTTERANCE_COLUMNS)
     assert rows[0]["source_file"] == "session_part1.mp4"
     assert rows[0]["audio_track"] == "2"
+    assert rows[0]["visual_method"] == "face_gaze"
+    assert rows[0]["visual_confidence"] == "0.87"
     assert rows[0]["timestamp"] == "01:01"
     assert rows[0]["start_s"] == "61.25"
     assert rows[0]["end_s"] == "63"
@@ -191,6 +231,22 @@ def test_process_multitrack_session_merges_offsets_and_tracks(tmp_path, monkeypa
     assert [turn["speaker"] for turn in turns] == ["A", "B", "A", "B"]
     assert turns[2]["source_file"] == "part2.mp4"
     assert turns[2]["start_s"] == 1800.0
+
+
+def test_apply_visual_addressees_adds_auditable_fields():
+    turns = [{"turn": 1, "speaker": "A", "utterance": "Look here."}]
+    enriched = apply_visual_addressees(
+        turns,
+        {
+            1: [
+                {"player": "A", "bbox": [100, 0, 150, 50], "yaw": -20, "confidence": 0.9},
+                {"player": "D", "bbox": [20, 0, 70, 50], "confidence": 0.83},
+            ]
+        },
+    )
+
+    assert enriched[0]["visual_addressee"] == "D"
+    assert enriched[0]["visual_votes"] == 1
 
 
 def test_parse_assignments_rejects_invalid_pairs():
