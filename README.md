@@ -75,8 +75,9 @@ Also install `ffmpeg` through your OS or cluster environment.
 
 ### 1. Create ignored data folders
 
-Participant media and face images should live under `data/`, which is ignored
-by git.
+For laptop tests, participant media and face images can live under `data/`,
+which is ignored by git. On Laguna, the MP4s can stay in the existing
+`/project/SZhou_1896/Pilot Test Apr 2026` directory.
 
 ```bash
 mkdir -p data/videos/session_01
@@ -84,9 +85,30 @@ mkdir -p data/faces
 mkdir -p output/session_01
 ```
 
-### 2. Put the seven MP4 files in place
+### 2. Point to the seven MP4 files
 
-Copy from your laptop or external drive:
+If the MP4s are already on Laguna at:
+
+```text
+/project/SZhou_1896/Pilot Test Apr 2026
+```
+
+do not copy them into the repository. Use that absolute directory in the
+session config:
+
+```yaml
+videos:
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
+```
+
+Because the path contains spaces, always quote it in shell commands:
+
+```bash
+ls "/project/SZhou_1896/Pilot Test Apr 2026"
+```
+
+If you are running on your laptop instead, copy from your laptop or external
+drive:
 
 ```bash
 cp "/path/to/session_part1.mp4" data/videos/session_01/
@@ -117,12 +139,18 @@ cp "/path/to/player_D_face.jpg" data/faces/D.jpg
 
 ### 4. Verify the audio tracks
 
-Run this on at least one MP4 before transcription:
+On Laguna, first list the actual filenames:
+
+```bash
+ls "/project/SZhou_1896/Pilot Test Apr 2026"/*.mp4
+```
+
+Then run `ffprobe` on one MP4 before transcription:
 
 ```bash
 ffprobe -v error -select_streams a \
   -show_entries stream=index:stream_tags=title \
-  -of table data/videos/session_01/session_part1.mp4
+  -of table "/project/SZhou_1896/Pilot Test Apr 2026/session_part1.mp4"
 ```
 
 Confirm the audio streams match the config, for example:
@@ -146,7 +174,8 @@ Edit `configs/session_01.yaml`:
 
 - Set `project.session_id`.
 - Set each participant's `label` and `name`.
-- Set `videos.data_dir` to `data/videos/session_01`.
+- Set `videos.data_dir` to the folder containing the MP4s. On Laguna, use
+  `"/project/SZhou_1896/Pilot Test Apr 2026"`.
 - Set the seven MP4 filenames under `videos.files`.
 - Set `offset_s` for each file if the MP4s are sequential chunks.
 - Set `visual.face_references` to `data/faces/A.jpg`, etc.
@@ -209,7 +238,7 @@ The key parts are:
 
 ```yaml
 videos:
-  data_dir: "data/videos"
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
   expected_files: 7
   audio_tracks:
     - index: 0
@@ -289,11 +318,19 @@ The notebook is safe by default:
 Step by step:
 
 1. Copy or sync this repository to Laguna.
-2. Copy/sync `data/videos/session_01/` and `data/faces/` to the same paths on
-   Laguna.
-3. Make sure `configs/session_01.yaml` points to those Laguna paths.
-4. Open `notebooks/laguna_transcript_workflow.ipynb`.
-5. Set:
+2. Confirm the MP4s are visible at
+   `/project/SZhou_1896/Pilot Test Apr 2026`.
+3. Copy/sync `data/faces/` to Laguna if the face reference images are not
+   already there.
+4. Make sure `configs/session_01.yaml` uses:
+
+   ```yaml
+   videos:
+     data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
+   ```
+
+5. Open `notebooks/laguna_transcript_workflow.ipynb`.
+6. Set:
 
    ```python
    SESSION = "session_01"
@@ -301,16 +338,16 @@ Step by step:
    SUBMIT = False
    ```
 
-6. Run the dry-run cell and review the generated Slurm script.
-7. When the script looks correct, set `SUBMIT = True`.
-8. Run the submit cell.
-9. Monitor:
+7. Run the dry-run cell and review the generated Slurm script.
+8. When the script looks correct, set `SUBMIT = True`.
+9. Run the submit cell.
+10. Monitor:
 
    ```bash
    squeue -u "$USER"
    ```
 
-10. After the job finishes, inspect:
+11. After the job finishes, inspect:
 
     ```text
     output/session_01/utterances.csv

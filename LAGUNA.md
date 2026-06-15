@@ -16,6 +16,31 @@ Speaker identity comes from the track map. The cluster job runs:
 python3 scripts/transcribe_to_csv.py --config configs/session_01.yaml
 ```
 
+## Existing media location
+
+The pilot MP4s are already on Laguna at:
+
+```text
+/project/SZhou_1896/Pilot Test Apr 2026
+```
+
+Do not copy them into the git repository. Point the session config at that
+directory:
+
+```yaml
+videos:
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
+```
+
+Because the path contains spaces, quote it in shell commands:
+
+```bash
+ls "/project/SZhou_1896/Pilot Test Apr 2026"/*.mp4
+```
+
+Use the filenames printed by `ls` under `videos.files` in
+`configs/session_01.yaml`.
+
 ## Jupyter workflow
 
 Open:

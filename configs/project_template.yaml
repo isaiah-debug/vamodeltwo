@@ -16,7 +16,7 @@ players:
     name: "Isaiah"
 
 videos:
-  data_dir: "data/videos"
+  data_dir: "/project/SZhou_1896/Pilot Test Apr 2026"
   expected_files: 7
 
   # Audio stream indices inside every MP4. Track 0 is ffmpeg's 0:a:0,
