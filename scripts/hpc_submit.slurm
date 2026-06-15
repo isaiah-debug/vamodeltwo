@@ -1,82 +1,49 @@
 #!/bin/bash
-# ============================================================
-# HPC batch script — Laguna cluster (SLURM)
-# Runs the full psych-graph pipeline on a session from Excel.
+# Laguna Slurm template for the participant transcript CSV tool.
 #
-# Usage:
-#   sbatch scripts/hpc_submit.slurm --export=EXCEL=data/session_01.xlsx,SESSION=s01
-#   (or edit EXCEL / SESSION below and submit directly)
+# Prefer scripts/laguna_submit.py from a notebook because it writes a reviewed
+# job script first. This static template is for users who want to edit and
+# submit a single file manually:
 #
-# Transfer data to Laguna:
-#   rsync -avz data/ <user>@laguna.hpc.ucsd.edu:~/behavior-pipeline/data/
-#   rsync -avz src/ app.py requirements.txt <user>@laguna.hpc.ucsd.edu:~/behavior-pipeline/
-# ============================================================
+#   sbatch scripts/hpc_submit.slurm
+#
+# No compute is used until sbatch is called.
 
-#SBATCH --job-name=psych-graph
-#SBATCH --output=output/slurm_%j_%x.out
-#SBATCH --error=output/slurm_%j_%x.err
-#SBATCH --time=02:00:00
+#SBATCH --job-name=transcript-csv
+#SBATCH --output=output/slurm/%x_%j.out
+#SBATCH --error=output/slurm/%x_%j.err
+#SBATCH --time=08:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --gres=gpu:1
+#SBATCH --mem=48G
 #SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
 
-# ── Config ────────────────────────────────────────────────────────────────────
-EXCEL="${EXCEL:-data/sample_dialogue.xlsx}"
+set -euo pipefail
+
+REPO="${REPO:-$HOME/behavior-pipeline}"
 SESSION="${SESSION:-session_01}"
-REPO="$HOME/behavior-pipeline"
-VENV="$REPO/psych-graph-env"
+TRANSCRIBE_ARGS="${TRANSCRIBE_ARGS:---config configs/session_01.yaml}"
+VENV="${VENV:-}"
+CONDA_ENV="${CONDA_ENV:-}"
 
-# ── Environment ───────────────────────────────────────────────────────────────
-source "$VENV/bin/activate"
-export PYTHONPATH="$REPO/src:$PYTHONPATH"
+cd "$REPO"
+mkdir -p output/slurm "output/$SESSION"
 
-echo "============================================================"
-echo " Job: $SLURM_JOB_NAME  ID: $SLURM_JOB_ID"
-echo " Excel: $EXCEL   Session: $SESSION"
-echo " GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader)"
-echo "============================================================"
+echo "Laguna transcript CSV job ${SLURM_JOB_ID:-manual}"
+echo "Repository : $REPO"
+echo "Session    : $SESSION"
+echo "Args       : $TRANSCRIBE_ARGS"
 
-python - <<'PYEOF'
-import os, json, sys
-from pathlib import Path
-sys.path.insert(0, str(Path(os.environ["REPO"]).parent / "src"))
+if [[ -n "$VENV" ]]; then
+  source "$VENV/bin/activate"
+elif [[ -n "$CONDA_ENV" ]]; then
+  source "$(conda info --base)/etc/profile.d/conda.sh"
+  conda activate "$CONDA_ENV"
+fi
 
-from excel_parser import load_dialogue, save_json
-from social_graph import build_graph, compute_metrics, erdos_distances, export_html, export_metrics_csv
-from psych_analysis import annotate_turns, speaker_profiles, emotional_contagion_matrix
+export PYTHONPATH="$REPO:$REPO/src:${PYTHONPATH:-}"
 
-excel  = os.environ["EXCEL"]
-sid    = os.environ["SESSION"]
-outdir = Path("output") / sid
-outdir.mkdir(parents=True, exist_ok=True)
-
-print(f"[1/4] Parsing Excel: {excel}")
-turns = load_dialogue(excel, session_id=sid)
-save_json(turns, outdir / "turns_raw.json")
-
-print(f"[2/4] NLP annotation (GPU)")
-turns = annotate_turns(turns, use_emotion_model=True, batch_size=64)
-save_json(turns, outdir / "turns_annotated.json")
-
-print(f"[3/4] Building social graph")
-G       = build_graph(turns)
-metrics = compute_metrics(G)
-profiles = speaker_profiles(turns)
-contagion = emotional_contagion_matrix(turns)
-
-export_html(G, outdir / "graph.html", metrics=metrics)
-export_metrics_csv(metrics, outdir / "metrics.csv")
-
-with open(outdir / "profiles.json", "w") as f:
-    json.dump(profiles, f, indent=2)
-with open(outdir / "contagion.json", "w") as f:
-    json.dump(contagion, f, indent=2)
-
-dist_df = erdos_distances(G)
-dist_df.to_csv(outdir / "erdos_distances.csv")
-
-print(f"[4/4] Done — all outputs in {outdir}/")
-PYEOF
+# shellcheck disable=SC2086
+python3 scripts/transcribe_to_csv.py $TRANSCRIBE_ARGS

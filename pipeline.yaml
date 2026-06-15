@@ -1,5 +1,0 @@
-# Pinned requirements for the vision environment.
-# Generate after your venv works:
-#   source ~/behavior-pipeline/vision-env/bin/activate
-#   pip freeze > environment/vision-requirements.txt
-# Commit the result so teammates can reproduce your exact environment.

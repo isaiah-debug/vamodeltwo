@@ -1,0 +1,4 @@
+# Local development and CI checks.
+-r requirements.txt
+pytest
+flake8

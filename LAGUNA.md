@@ -1,104 +1,92 @@
-#!/usr/bin/env python3
-"""Process ONE session through ONE pipeline stage.
+# Laguna workflow for multi-track MP4 transcription
 
-This is the architectural unit of the whole repo: notebooks, teammates,
-and the Slurm job array all call this same script. Keep it boring.
+Use Laguna only when you are ready to run transcription. Notebook setup and job
+review do not consume GPUs.
 
-Usage:
-    python scripts/process_one_session.py --session s01_groupA --stage audio
-    python scripts/process_one_session.py --session s01_groupA --stage features
-"""
+## Expected input
 
-import argparse
-import json
-import os
-import subprocess
-import sys
-from pathlib import Path
+- 7 MP4 files
+- 4 isolated audio tracks per MP4
+- one audio track per participant
+- reference face images for A/B/C/D under the paths in the session config
 
-import yaml
+Speaker identity comes from the track map. The cluster job runs:
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "src"))
+```bash
+python3 scripts/transcribe_to_csv.py --config configs/session_01.yaml
+```
 
+## Jupyter workflow
 
-def load_config() -> dict:
-    with open(REPO_ROOT / "configs" / "pipeline.yaml") as f:
-        return yaml.safe_load(f)
+Open:
 
+```text
+notebooks/laguna_transcript_workflow.ipynb
+```
 
-def stage_audio(session: str, cfg: dict) -> None:
-    """Transcribe + diarize via WhisperX. Requires the audio venv."""
-    data_dir = REPO_ROOT / cfg["paths"]["data_dir"]
-    out_dir = REPO_ROOT / cfg["paths"]["output_dir"] / session
-    out_dir.mkdir(parents=True, exist_ok=True)
+The notebook defaults to:
 
-    wav = data_dir / f"{session}.wav"
-    if not wav.exists():
-        sys.exit(f"Not found: {wav}\nNaming convention: see data/README.md")
+```python
+SUBMIT = False
+```
 
-    hf_token = os.environ.get("HF_TOKEN", "")
-    if cfg["audio"]["diarize"] and not hf_token:
-        sys.exit("HF_TOKEN not set. Copy .env.example to .env, fill it, and "
-                 "run:  export $(grep -v '^#' .env | xargs)")
+First run generates and prints a Slurm script. It does not call `sbatch`.
 
-    cmd = [
-        "whisperx", str(wav),
-        "--model", cfg["audio"]["whisper_model"],
-        "--compute_type", cfg["audio"]["compute_type"],
-        "--language", cfg["audio"]["language"],
-        "--output_dir", str(out_dir),
-        "--output_format", "json",
-    ]
-    if cfg["audio"]["diarize"]:
-        cmd += ["--diarize", "--hf_token", hf_token,
-                "--min_speakers", str(cfg["audio"]["min_speakers"]),
-                "--max_speakers", str(cfg["audio"]["max_speakers"])]
+After reviewing paths, resources, and the config, set:
 
-    print(f"[audio] {session}: running WhisperX...")
-    subprocess.run(cmd, check=True)
-    print(f"[audio] done -> {out_dir}")
+```python
+SUBMIT = True
+```
 
+and rerun the submit cell.
 
-def stage_features(session: str, cfg: dict) -> None:
-    """Compute turn-taking features from the transcript JSON."""
-    from pipeline.features.turns import compute_speaker_features
+## Terminal dry-run
 
-    out_dir = REPO_ROOT / cfg["paths"]["output_dir"] / session
-    transcripts = list(out_dir.glob("*.json"))
-    if not transcripts:
-        sys.exit(f"No transcript JSON in {out_dir} — run --stage audio first.")
+```bash
+python3 scripts/laguna_submit.py \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
+```
 
-    with open(transcripts[0]) as f:
-        transcript = json.load(f)
+## Terminal submit
 
-    features = compute_speaker_features(
-        transcript,
-        overlap_ms=cfg["features"]["interruption_overlap_ms"],
-    )
-    out_path = out_dir / "speaker_features.json"
-    with open(out_path, "w") as f:
-        json.dump(features, f, indent=2)
-    print(f"[features] done -> {out_path}")
-    for spk, vals in features.items():
-        print(f"  {spk}: talk={vals['speaking_time_s']:.0f}s "
-              f"turns={vals['turn_count']} "
-              f"interruptions={vals['interruptions_made']}")
+```bash
+python3 scripts/laguna_submit.py --submit \
+  --session session_01 \
+  --time 08:00:00 \
+  --cpus 8 \
+  --mem 48G \
+  --gpus 1 \
+  -- --config configs/session_01.yaml
+```
 
+## Static Slurm template
 
-STAGES = {"audio": stage_audio, "features": stage_features}
+If you prefer a plain Slurm file:
 
+```bash
+sbatch --export=SESSION=session_01,TRANSCRIBE_ARGS="--config configs/session_01.yaml" scripts/hpc_submit.slurm
+```
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--session", required=True,
-                    help="Session ID, e.g. s01_groupA (expects data/<id>.wav)")
-    ap.add_argument("--stage", required=True, choices=STAGES)
-    args = ap.parse_args()
+## Monitor and cancel
 
-    cfg = load_config()
-    STAGES[args.stage](args.session, cfg)
+```bash
+squeue -u "$USER"
+scancel <job_id>
+```
 
+Logs are written under:
 
-if __name__ == "__main__":
-    main()
+```text
+output/slurm/
+```
+
+The final CSV is:
+
+```text
+output/<session_id>/utterances.csv
+```
